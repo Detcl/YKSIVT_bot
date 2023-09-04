@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from docx import Document
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from telebot import types
 
 
@@ -164,16 +164,20 @@ def get_next_day(today):
 
 @bot.message_handler(commands=['завтра', 'tomorrow'])
 def tomorrow_schedule(message):
-    today = days_mapping[datetime.today().strftime('%A').upper()]
-    tomorrow = get_next_day(today)
-    lessons = schedule.get(tomorrow, {})
+    today = datetime.today()
+    tomorrow_date = today + timedelta(days=1)
+    formatted_date = tomorrow_date.strftime('%d.%m.%Y')  # Форматируем дату в виде "ДД.ММ.ГГГГ"
+
+    day_name = days_mapping[tomorrow_date.strftime('%A').upper()]
+    lessons = schedule.get(day_name, {})
+
     if not lessons:
-        bot.reply_to(message, "Завтра занятий нет.")
+        bot.reply_to(message, f"Завтра ({formatted_date}) занятий нет.")
         return
 
-    response = "\n".join([format_lesson(i, lesson, tomorrow) for i, lesson in lessons.items()])
+    response = f"Расписание на {formatted_date} (завтра):\n"
+    response += "\n".join([format_lesson(i, lesson, day_name) for i, lesson in lessons.items()])
     bot.reply_to(message, response)
-
 
 
 
