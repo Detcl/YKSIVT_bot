@@ -1,11 +1,69 @@
 import telebot
 import re
 import threading
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from docx import Document
+from io import BytesIO
 from datetime import datetime
 from telebot import types
 
-TOKEN = '6389584311:AAFaPmbRJq3Li6_GgSiLyTJrg_5jGwnJdT0'
+TOKEN = '6389584311:AAEOqZhGrLhHuKz03D4z3gW_ZQAObS6sOsA'
 bot = telebot.TeleBot(TOKEN)
+
+def fetch_latest_docx_url(base_url="https://www.uksivt.ru/zameny"):
+    response = requests.get(base_url)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Ищем все ссылки на DOCX-файлы
+    docx_links = [link['href'] for link in soup.select('td > a[href$=".docx"]')]
+
+    # Если это относительные ссылки, преобразуем их в абсолютные
+    docx_links = [urljoin(base_url, link) for link in docx_links]
+
+    # Извлекаем даты из имен файлов
+    file_dates = [link.split('/')[-1].replace('.docx', '') for link in docx_links]
+
+    # Преобразуем строки дат в объекты datetime
+    date_objects = []
+    for date_str in file_dates:
+        try:
+            date_obj = datetime.strptime(date_str, "%d.%m")
+            date_objects.append(date_obj)
+        except ValueError:
+            pass
+
+    # Определяем последнюю дату
+    latest_date = max(date_objects, default=None)
+    if not latest_date:
+        raise ValueError("Не удалось определить последнюю дату.")
+
+    # Находим ссылку, соответствующую последней дате
+    latest_date_str = latest_date.strftime("%d.%m")
+    latest_link = next((link for link in docx_links if latest_date_str in link), None)
+    if not latest_link:
+        raise ValueError("Не найдено ссылки на DOCX-файл для последней даты.")
+
+    return latest_link
+
+#print(fetch_latest_docx_url())
+def extract_schedule_from_docx(docx_url):
+    # Скачиваем docx-файл
+    response = requests.get(docx_url)
+    response.raise_for_status()
+
+    # Открываем docx-файл с помощью python-docx
+    doc = Document(BytesIO(response.content))
+
+    # Ищем строку для группы 21уКСК
+    for table in doc.tables:
+        for row in table.rows:
+            if "21уКСК" in row.cells[0].text:  # Проверяем первую ячейку каждой строки на наличие "21уКСК"
+                return ' '.join(cell.text for cell in row.cells)
+    return None
 
 # Обновленное расписание для группы 21уКСК-1
 schedule = {
@@ -94,6 +152,17 @@ all_users = set()
 def remind_user(chat_id, text):
     bot.send_message(chat_id, text)
 
+@bot.message_handler(commands=['замены'])
+def fetch_replacements(message):
+    try:
+        docx_url = fetch_latest_docx_url()
+        schedule_info = extract_schedule_from_docx(docx_url)
+        if schedule_info:
+            bot.reply_to(message, schedule_info)
+        else:
+            bot.reply_to(message, "Не удалось найти информацию для группы 21уКСК в последнем docx-файле.")
+    except Exception as e:
+        bot.reply_to(message, f"Произошла ошибка: {e}")
 
 
 @bot.message_handler(commands=['start', 'help'])
@@ -110,12 +179,13 @@ def send_welcome(message):
 3. "/пара": Узнать текущую пару.
    Пример: /пара
 
-4. `/напомнить` или `напомнить`: Установить напоминание на определенное время.
+4. `/напомнить`: Установить напоминание на определенное время.
    Пример: /напомнить 8:30 Иди нахуй
 
-5. `/напомнитьвсем` или `напомнить всем`: Установить напоминание для всех пользователей на определенное время.
+5. `/напомнитьвсем`: Установить напоминание для всех пользователей на определенное время.
    Пример: /напомнитьвсем 9:00 Всем просыпаться!
-
+   
+6. /замены - выводит замены на сегодня
 могу не работать 
     """
     bot.reply_to(message, help_text)
