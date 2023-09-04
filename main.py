@@ -307,5 +307,4 @@ def remind_all(message):
     except Exception as e:
         bot.reply_to(message, "Ошибка при установке напоминания. Пожалуйста, убедитесь, что вы указали время и текст корректно.")
 
-
-bot.polling()
+bot.polling(timeout=999)
