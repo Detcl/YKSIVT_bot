@@ -2,12 +2,14 @@ import telebot
 import re
 import threading
 import requests
+import random
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from docx import Document
 from io import BytesIO
 from datetime import datetime
 from telebot import types
+
 
 TOKEN = '6389584311:AAEOqZhGrLhHuKz03D4z3gW_ZQAObS6sOsA'
 bot = telebot.TeleBot(TOKEN)
@@ -103,29 +105,21 @@ schedule = {
 bell_schedule = {
     'default': [
         ("07:50", "09:20"),
-        ("09:30", "10:45"),
-        ("11:15", "12:00"),
-        ("12:00", "12:45"),  # 1-я половина 2-ой пары для 3-4 курсов
-        ("12:45", "13:30"),  # 2-я половина 2-ой пары для 1-х, 3-х, 4-х курсов
-        ("12:05", "12:50"),  # 2-я половина 2-ой пары для 2-х курсов
-        ("13:35", "14:20"),
-        ("14:25", "15:40"),
+        ("09:30", "11:05"),
+        ("11:15", "12:50"),
+        ("13:35", "15:10"),
         ("15:20", "16:50"),
         ("17:00", "18:20"),
         ("18:30", "19:50")
     ],
     'wednesday': [
         ("07:50", "09:20"),
-        ("09:30", "10:45"),
-        ("11:15", "12:00"),
-        ("12:00", "12:45"),  # 1-я половина 2-ой пары для 3-4 курсов
-        ("12:45", "13:30"),  # 2-я половина 2-ой пары для 1-х, 3-х, 4-х курсов
-        ("12:05", "12:50"),  # 2-я половина 2-ой пары для 2-х курсов
-        ("13:35", "14:20"),
-        ("14:25", "15:40"),
+        ("09:30", "11:05"),
+        ("11:15", "12:50"),
+        ("13:35", "15:10"),
         ("16:10", "17:30"),
         ("17:40", "18:50"),
-        ("19:00", "20:40")
+        ("19:00", "20:10")
     ],
     'saturday': [
         ("08:00", "09:20"),
@@ -134,9 +128,10 @@ bell_schedule = {
         ("12:30", "13:50"),
         ("14:00", "15:20"),
         ("15:30", "16:50"),
-        ("17:40", "18:20")
+        ("17:00", "18:20")
     ]
 }
+
 days_mapping = {
     'MONDAY': 'ПОНЕДЕЛЬНИК',
     'TUESDAY': 'ВТОРНИК',
@@ -170,25 +165,38 @@ def send_welcome(message):
     help_text = """
 Я бот-расписание для группы 21уКСК-1. Вот список команд, которые я поддерживаю:
 
-1. "/расписание": Показать расписание на сегодня.
-   Пример: /расписание
+1. /расписание - Показать расписание на сегодня.
+   
+2. /неделя - Показать расписание на всю неделю.
 
-2. `"/расписаниенанеделю": Показать расписание на всю неделю.
-   Пример: /расписаниенанеделю
+3. /пара - Узнать текущую пару.
 
-3. "/пара": Узнать текущую пару.
-   Пример: /пара
-
-4. `/напомнить`: Установить напоминание на определенное время.
+4. /напомнить - Установить напоминание на определенное время.
    Пример: /напомнить 8:30 Иди нахуй
 
-5. `/напомнитьвсем`: Установить напоминание для всех пользователей на определенное время.
-   Пример: /напомнитьвсем 9:00 Всем просыпаться!
+5. /напомнитьвсем - Установить напоминание для всех пользователей на определенное время.
+   Пример: /напомнитьвсем 9:00 Всем идти нахуй!(пока что не пашет, мб вообще удалю)
    
 6. /замены - выводит замены на сегодня
-могу не работать 
-    """
+
+7. /надолинапару - Надо ли на пару или нет
+Если не работаю пинать германа или ждать пока меня допият    """
     bot.reply_to(message, help_text)
+
+
+def format_lesson(lesson_num, lesson_info, day):
+    if day in ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'ЧЕТВЕРГ', 'ПЯТНИЦА']:
+        day_key = 'default'
+    elif day == 'СРЕДА':
+        day_key = 'wednesday'
+    elif day == 'СУББОТА':
+        day_key = 'saturday'
+    else:
+        return f"Ошибка: Неизвестный день {day}"
+
+    time_range = f"{bell_schedule[day_key][lesson_num][0]}-{bell_schedule[day_key][lesson_num][1]}"
+    return f"{time_range} - {lesson_info[0]} - {lesson_info[1]} ({lesson_info[2]})"
+
 
 
 @bot.message_handler(commands=['расписание', 'schedule'])
@@ -199,34 +207,58 @@ def today_schedule(message):
         bot.reply_to(message, "Сегодня занятий нет. Ты че долбаеб это в воскресенье спрашивать?")
         return
 
-    response = "\n".join([f"{i}. {lesson[0]} - {lesson[1]} ({lesson[2]})" for i, lesson in lessons.items()])
+    response = "\n".join([format_lesson(i, lesson, today) for i, lesson in lessons.items()])
     bot.reply_to(message, response)
 
-@bot.message_handler(commands=['расписаниенанеделю', 'weekschedule'])
+@bot.message_handler(commands=['неделя', 'weekschedule'])
 def week_schedule(message):
     response = ""
     for day, lessons in schedule.items():
         response += day + ":\n"
-        response += "\n".join([f"{i}. {lesson[0]} - {lesson[1]} ({lesson[2]})" for i, lesson in lessons.items()]) + "\n\n"
+        response += "\n".join([format_lesson(i, lesson, day) for i, lesson in lessons.items()]) + "\n\n"
     bot.reply_to(message, response)
 
 @bot.message_handler(commands=['пара', 'lesson'])
 def current_lesson(message):
-    today = datetime.today().strftime('%A').upper()
+    today = days_mapping[datetime.today().strftime('%A').upper()]
     current_time = datetime.now().time()
     current_lesson = None
+    next_lesson = None
+
     for i, (start, end) in enumerate(bell_schedule.get(today, bell_schedule['default'])):
         start_time = datetime.strptime(start, "%H:%M").time()
         end_time = datetime.strptime(end, "%H:%M").time()
         if start_time <= current_time <= end_time:
             current_lesson = i
+        if current_time <= start_time:
+            next_lesson = i
             break
+
+    response = ""
 
     if current_lesson is not None and current_lesson in schedule.get(today, {}):
         lesson = schedule[today][current_lesson]
-        bot.reply_to(message, f"Текущая пара: {lesson[0]} - {lesson[1]} ({lesson[2]})")
-    else:
-        bot.reply_to(message, "Сейчас нет пары.")
+        time_range = f"{bell_schedule.get(today, bell_schedule['default'])[current_lesson][0]}-{bell_schedule.get(today, bell_schedule['default'])[current_lesson][1]}"
+        response += f"Текущая пара ({time_range}): {lesson[0]} - {lesson[1]} ({lesson[2]})\n"
+
+    if next_lesson is not None and next_lesson in schedule.get(today, {}):
+        lesson = schedule[today][next_lesson]
+        time_range = f"{bell_schedule.get(today, bell_schedule['default'])[next_lesson][0]}-{bell_schedule.get(today, bell_schedule['default'])[next_lesson][1]}"
+        response += f"Следующая пара ({time_range}): {lesson[0]} - {lesson[1]} ({lesson[2]})"
+
+    if not response:
+        response = "Сейчас нет пары."
+
+    bot.reply_to(message, response)
+
+
+
+@bot.message_handler(commands=['надолинапару'])
+def should_i_go_to_class(message):
+    responses = ["Да, надо", "Нет, не надо"]
+    bot.reply_to(message, random.choice(responses))
+
+
 
 @bot.message_handler(commands=['напомнить'])
 def set_reminder(message):
