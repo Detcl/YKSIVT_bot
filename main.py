@@ -20,34 +20,21 @@ def fetch_latest_docx_url(base_url="https://www.uksivt.ru/zameny"):
 
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    # Ищем все ссылки на DOCX-файлы
-    docx_links = [link['href'] for link in soup.select('td > a[href$=".docx"]')]
+    # Ищем первый блок с классом "ui-datepicker-calendar"
+    calendar_block = soup.find(class_="ui-datepicker-calendar")
+    if not calendar_block:
+        raise ValueError("Не найден блок с классом 'ui-datepicker-calendar'.")
+
+    # Ищем все ссылки на DOCX-файлы в этом блоке
+    docx_links = [link['href'] for link in calendar_block.select('a[href$=".docx"]')]
 
     # Если это относительные ссылки, преобразуем их в абсолютные
     docx_links = [urljoin(base_url, link) for link in docx_links]
 
-    # Извлекаем даты из имен файлов
-    file_dates = [link.split('/')[-1].replace('.docx', '') for link in docx_links]
-
-    # Преобразуем строки дат в объекты datetime
-    date_objects = []
-    for date_str in file_dates:
-        try:
-            date_obj = datetime.strptime(date_str, "%d.%m")
-            date_objects.append(date_obj)
-        except ValueError:
-            pass
-
-    # Определяем последнюю дату
-    latest_date = max(date_objects, default=None)
-    if not latest_date:
-        raise ValueError("Не удалось определить последнюю дату.")
-
-    # Находим ссылку, соответствующую последней дате
-    latest_date_str = latest_date.strftime("%d.%m")
-    latest_link = next((link for link in docx_links if latest_date_str in link), None)
+    # Берем последнюю ссылку
+    latest_link = docx_links[-1] if docx_links else None
     if not latest_link:
-        raise ValueError("Не найдено ссылки на DOCX-файл для последней даты.")
+        raise ValueError("Не найдено ссылки на DOCX-файл в блоке 'ui-datepicker-calendar'.")
 
     return latest_link
 
