@@ -128,6 +128,14 @@ days_mapping = {
     'SATURDAY': 'СУББОТА',
     'SUNDAY': 'ВОСКРЕСЕНЬЕ'
 }
+commands = [
+    ("/расписание", "Расписание на сегодня"),
+    ("/неделя", "Расписание на неделю"),
+    ("/пара", "Текущая пара"),
+    ("/замены", "Замены на сегодня"),
+    ("/надолинапару", "Надо ли на пару?"),
+    ("/завтра", "Пары на завтра")
+]
 reminders = {}
 all_users = set()
 
@@ -147,28 +155,69 @@ def fetch_replacements(message):
         bot.reply_to(message, f"Произошла ошибка: {e}")
 
 
+
+def get_next_day(today):
+    days = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА', 'ВОСКРЕСЕНЬЕ']
+    today_index = days.index(today)
+    next_day_index = (today_index + 1) % 7
+    return days[next_day_index]
+
+@bot.message_handler(commands=['завтра', 'tomorrow'])
+def tomorrow_schedule(message):
+    today = days_mapping[datetime.today().strftime('%A').upper()]
+    tomorrow = get_next_day(today)
+    lessons = schedule.get(tomorrow, {})
+    if not lessons:
+        bot.reply_to(message, "Завтра занятий нет.")
+        return
+
+    response = "\n".join([format_lesson(i, lesson, tomorrow) for i, lesson in lessons.items()])
+    bot.reply_to(message, response)
+
+
+
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     help_text = """
-Я бот-расписание для группы 21уКСК-1. Вот список команд, которые я поддерживаю:
+*Я бот-расписание для группы 21уКСК-1*. Вот что я умею:
 
-1. /расписание - Показать расписание на сегодня.
-   
-2. /неделя - Показать расписание на всю неделю.
+- *Расписание*: Показывает расписание на текущий день.
+- *Неделя*: Показывает расписание на всю неделю.
+- *Пара*: Указывает, какая сейчас идет пара.
+- *Напомнить*: Позволяет установить напоминание на определенное время.
+-  Устанавливается с помощью /напомнить 13:37 жопа
+- *Замены*: Выводит информацию о заменах на сегодня.
+- *Надо ли на пару?*: Случайным образом говорит, стоит ли идти на пару.
+- *Завтра*: Выводит информацию о завтрашних парах.
+    """
+    markup = types.InlineKeyboardMarkup()
+    for cmd, desc in commands:
+        markup.add(types.InlineKeyboardButton(text=desc, callback_data=cmd))
+    bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode="Markdown")
 
-3. /пара - Узнать текущую пару.
+# Добавим обработчик для callback_query, чтобы обрабатывать нажатия на кнопки
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    if call.message:
+        if call.data == "/расписание":
+            today_schedule(call.message)
+        elif call.data == "/неделя":
+            week_schedule(call.message)
+        elif call.data == "/пара":
+            current_lesson(call.message)
+        elif call.data == "/замены":
+            fetch_replacements(call.message)
+        elif call.data == "/надолинапару":
+            should_i_go_to_class(call.message)
+        elif call.data == "/завтра":
+            tomorrow_schedule(call.message)
+        else:
+            bot.send_message(call.message.chat.id, f"Неизвестная команда: {call.data}")
 
-4. /напомнить - Установить напоминание на определенное время.
-   Пример: /напомнить 8:30 Иди нахуй
 
-5. /напомнитьвсем - Установить напоминание для всех пользователей на определенное время.
-   Пример: /напомнитьвсем 9:00 Всем идти нахуй!(пока что не пашет, мб вообще удалю)
-   
-6. /замены - выводит замены на сегодня
 
-7. /надолинапару - Надо ли на пару или нет
-Если не работаю пинать германа или ждать пока меня допият    """
-    bot.reply_to(message, help_text)
+
 
 
 def format_lesson(lesson_num, lesson_info, day):
