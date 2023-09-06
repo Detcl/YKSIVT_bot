@@ -450,4 +450,13 @@ def handle_all_messages(message):
 
 
 
-bot.polling(timeout=999)
+while True:
+    try:
+        bot.polling(timeout=25)
+    except requests.exceptions.ReadTimeout:
+        print("Timeout error occurred. Trying to reconnect...")
+        time.sleep(10)  # Подождите 10 секунд перед попыткой переподключения
+    except Exception as e:
+        print(f"Unexpected error occurred: {e}. Trying to reconnect...")
+        time.sleep(10)
+
