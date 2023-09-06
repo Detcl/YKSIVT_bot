@@ -143,7 +143,8 @@ commands = [
     ("/пара", "Текущая пара"),
     ("/замены", "Замены на сегодня"),
     ("/надолинапару", "Надо ли на пару?"),
-    ("/завтра", "Пары на завтра")
+    ("/завтра", "Пары на завтра"),
+    ("/звонки", "Звонки на пару")
 ]
 reminders = {}
 all_users = set()
@@ -208,6 +209,7 @@ def send_welcome(message):
 - *Замены*: Выводит информацию о заменах на сегодня.
 - *Надо ли на пару?*: Случайным образом говорит, стоит ли идти на пару.
 - *Завтра*: Выводит информацию о завтрашних парах.
+- *Звонки*: Выводит информацию о звонках на пару на сегодня.
     """
     markup = types.InlineKeyboardMarkup()
     for cmd, desc in commands:
@@ -230,12 +232,32 @@ def callback_inline(call):
             should_i_go_to_class(call.message)
         elif call.data == "/завтра":
             tomorrow_schedule(call.message)
+        elif call.data == "/звонки":
+            bell_times(call.message)
         else:
             bot.send_message(call.message.chat.id, f"Неизвестная команда: {call.data}")
 
 
+# Функция для вывода расписания звонков
+@bot.message_handler(commands=['звонки'])
+def bell_times(message):
+    today = days_mapping[datetime.today().strftime('%A').upper()]
 
+    if today in ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'ЧЕТВЕРГ', 'ПЯТНИЦА']:
+        day_key = 'default'
+    elif today == 'СРЕДА':
+        day_key = 'wednesday'
+    elif today == 'СУББОТА':
+        day_key = 'saturday'
+    else:
+        bot.reply_to(message, "Сегодня воскресенье, звонков нет.")
+        return
 
+    response = "Расписание звонков на сегодня:\n"
+    for i, (start, end) in enumerate(bell_schedule[day_key]):
+        response += f"{i}. {start}-{end}\n"
+
+    bot.reply_to(message, response)
 
 
 def format_lesson(lesson_num, lesson_info, day):
