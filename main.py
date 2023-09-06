@@ -2,7 +2,11 @@ import telebot
 import re
 import threading
 import requests
+import time
 import random
+import json
+import os
+
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from docx import Document
@@ -11,8 +15,13 @@ from datetime import datetime, timedelta
 from telebot import types
 
 
+
 TOKEN = '6389584311:AAEOqZhGrLhHuKz03D4z3gW_ZQAObS6sOsA'
 bot = telebot.TeleBot(TOKEN)
+
+
+
+
 
 def fetch_latest_docx_url(base_url="https://www.uksivt.ru/zameny"):
     response = requests.get(base_url)
@@ -139,6 +148,7 @@ commands = [
 reminders = {}
 all_users = set()
 
+
 def remind_user(chat_id, text):
     bot.send_message(chat_id, text)
 
@@ -148,11 +158,15 @@ def fetch_replacements(message):
         docx_url = fetch_latest_docx_url()
         schedule_info = extract_schedule_from_docx(docx_url)
         if schedule_info:
-            bot.reply_to(message, schedule_info)
+            full_message = schedule_info
         else:
-            bot.reply_to(message, "Не удалось найти информацию для группы 21уКСК в последнем docx-файле.")
+            full_message = "Не удалось найти информацию для группы 21уКСК-1 в последнем docx-файле."
+
+        full_message += f"\n\n📄 [Скачать документ с заменами]({docx_url})"
+        bot.reply_to(message, full_message, parse_mode="Markdown")
     except Exception as e:
         bot.reply_to(message, f"Произошла ошибка: {e}")
+
 
 
 
@@ -346,5 +360,72 @@ def remind_all(message):
         bot.reply_to(message, f"Напоминание всем установлено на {reminder_time}.")
     except Exception as e:
         bot.reply_to(message, "Ошибка при установке напоминания. Пожалуйста, убедитесь, что вы указали время и текст корректно.")
+
+
+
+# Добавим список администраторов
+ADMINS = ['572388647']  # Замените 'YOUR_ADMIN_ID' на ID вашего администратора
+CHAT_FILE = "chats.txt"
+
+def save_chat_to_file(chat_id):
+    """Сохраняет ID чата в файл, если он там еще не присутствует."""
+    if not os.path.exists(CHAT_FILE):
+        with open(CHAT_FILE, 'w') as f:
+            pass  # просто создаем файл, если его еще нет
+
+    with open(CHAT_FILE, 'r') as file:
+        existing_chats = file.readlines()
+
+    # Проверяем, есть ли уже такой ID чата в файле
+    if str(chat_id) + '\n' not in existing_chats:
+        with open(CHAT_FILE, 'a') as file:
+            file.write(str(chat_id) + '\n')
+        print(f"Чат {chat_id} добавлен в файл.")
+    else:
+        print(f"Чат {chat_id} уже присутствует в файле.")
+
+
+
+
+def get_all_chats_from_file():
+    """Возвращает список всех ID чатов из файла."""
+    if not os.path.exists(CHAT_FILE):
+        return []
+
+    with open(CHAT_FILE, 'r') as file:
+        chats = file.readlines()
+
+    return [int(chat.strip()) for chat in chats]
+
+
+
+
+# Функция для рассылки сообщений
+@bot.message_handler(commands=['рассылка'])
+def send_broadcast(message):
+    if str(message.from_user.id) in ADMINS:
+        msg_parts = message.text.split(' ', 1)
+        if len(msg_parts) < 2:
+            bot.reply_to(message, "Пожалуйста, укажите сообщение для рассылки после команды.")
+            return
+        broadcast_msg = msg_parts[1]
+        chats = get_all_chats_from_file()
+
+        for chat_id in chats:
+            try:
+                bot.send_message(chat_id, broadcast_msg)
+            except:
+                continue
+        bot.reply_to(message, "Рассылка выполнена.")
+    else:
+        bot.reply_to(message, "У вас нет прав на выполнение этой команды.")
+
+# Измените обработчик сообщений, чтобы добавить каждый чат в файл
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    save_chat_to_file(message.chat.id)
+    # ... [остальной код обработчика]
+
+
 
 bot.polling(timeout=999)
