@@ -149,6 +149,24 @@ commands = [
 reminders = {}
 all_users = set()
 
+last_response_time = {}  # Добавлен словарь для отслеживания времени последнего ответа
+
+EXCLUDED_IDS = ['572388647']  # Замените на реальные ID пользователей
+def can_send_message(chat_id, user_id):
+    # Если это личный чат или пользователь в списке исключений
+    if chat_id == user_id or str(user_id) in EXCLUDED_IDS:
+        return True
+
+    now = datetime.now()
+
+    if user_id in last_response_time:
+        last_time = last_response_time[user_id]
+        if (now - last_time).seconds < 60:  # 60 секунд = 1 минута
+            return False
+    last_response_time[user_id] = now
+    return True
+
+
 
 def remind_user(chat_id, text):
     bot.send_message(chat_id, text)
@@ -198,6 +216,9 @@ def tomorrow_schedule(message):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
+    if not can_send_message(message.chat.id, message.from_user.id):
+        return
+
     help_text = """
 *Я бот-расписание для группы 21уКСК-1*. Вот что я умею:
 
@@ -219,6 +240,9 @@ def send_welcome(message):
 # Добавим обработчик для callback_query, чтобы обрабатывать нажатия на кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
+    if not can_send_message(call.message.chat.id, call.from_user.id):
+        return
+
     if call.message:
         if call.data == "/расписание":
             today_schedule(call.message)
@@ -459,4 +483,3 @@ while True:
     except Exception as e:
         print(f"Unexpected error occurred: {e}. Trying to reconnect...")
         time.sleep(10)
-
