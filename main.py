@@ -165,8 +165,13 @@ def check_and_send_replacements():
 
     # Читаем последние сохраненные замены из файла
     if os.path.exists("replacements.txt"):
-        with open("replacements.txt", "r") as f:
-            last_replacements = f.read()
+        try:
+            with open("replacements.txt", "r", encoding="ISO-8859-1") as f:
+                last_replacements = f.read()
+
+        except UnicodeDecodeError:
+            print("Error decoding the replacements.txt file. It might contain non-UTF-8 characters.")
+            last_replacements = ""
 
     try:
         docx_url = fetch_latest_docx_url()
@@ -175,7 +180,7 @@ def check_and_send_replacements():
         # Если замены найдены и они отличаются от последних сохраненных
         if schedule_info and schedule_info != last_replacements:
             # Сохраняем замены в файл
-            with open("replacements.txt", "w") as f:
+            with open("replacements.txt", "w", encoding="ISO-8859-1") as f:
                 f.write(schedule_info)
 
             # Отправляем замены во все личные чаты
