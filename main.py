@@ -147,15 +147,7 @@ days_mapping = {
     'SATURDAY': 'СУББОТА',
     'SUNDAY': 'ВОСКРЕСЕНЬЕ'
 }
-commands = [
-    ("/расписание", "Расписание на сегодня"),
-    ("/неделя", "Расписание на неделю"),
-    ("/пара", "Текущая пара"),
-    ("/замены", "Замены на сегодня"),
-    ("/надолинапару", "Надо ли на пару?"),
-    ("/завтра", "Пары на завтра"),
-    ("/звонки", "Звонки на пару")
-]
+
 reminders = {}
 all_users = set()
 #РАССЫЛКА ЗАМЕН
@@ -208,6 +200,9 @@ def start_replacement_checker():
 threading.Thread(target=start_replacement_checker).start()
 
 #РАССЫЛКА ЗАМЕН ОКОНЧЕНА
+
+
+
 
 last_response_time = {}  # Добавлен словарь для отслеживания времени последнего ответа
 
@@ -272,6 +267,13 @@ def tomorrow_schedule(message):
     response += "\n".join([format_lesson(i, lesson, day_name) for i, lesson in lessons.items()])
     bot.reply_to(message, response)
 
+@bot.message_handler(func=lambda message: True)
+def handle_all_commands(message):
+    function_to_call = commands_to_functions.get(message.text)
+    if function_to_call:
+        function_to_call(message)
+    else:
+        bot.reply_to(message, "Неизвестная команда.")
 
 
 @bot.message_handler(commands=['start', 'help'])
@@ -292,36 +294,22 @@ def send_welcome(message):
 - *Завтра*: Выводит информацию о завтрашних парах.
 - *Звонки*: Выводит информацию о звонках на пару на сегодня.
     """
-    markup = types.InlineKeyboardMarkup()
-    for cmd, desc in commands:
-        markup.add(types.InlineKeyboardButton(text=desc, callback_data=cmd))
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, row_width=2)
+    buttons = [types.KeyboardButton(text=desc) for cmd, desc in commands]
+    markup.add(*buttons)
     bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode="Markdown")
 
-# Добавим обработчик для callback_query, чтобы обрабатывать нажатия на кнопки
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call):
-    if not can_send_message(call.message.chat.id, call.from_user.id):
-        return
-
-    if call.message:
-        if call.data == "/расписание":
-            today_schedule(call.message)
-        elif call.data == "/неделя":
-            week_schedule(call.message)
-        elif call.data == "/пара":
-            current_lesson(call.message)
-        elif call.data == "/замены":
-            fetch_replacements(call.message)
-        elif call.data == "/надолинапару":
-            should_i_go_to_class(call.message)
-        elif call.data == "/завтра":
-            tomorrow_schedule(call.message)
-        elif call.data == "/звонки":
-            bell_times(call.message)
-        else:
-            bot.send_message(call.message.chat.id, f"Неизвестная команда: {call.data}")
 
 
+
+
+
+@bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    function_to_call = text_to_function.get(message.text)
+
+    if function_to_call:
+        function_to_call(message)
 # Функция для вывода расписания звонков
 @bot.message_handler(commands=['звонки'])
 def bell_times(message):
@@ -508,6 +496,40 @@ def handle_all_messages(message):
     save_chat_to_file(message.chat.id)
     # ... [остальной код обработчика]
 
+
+
+
+
+@bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    # Получаем функцию на основе текста сообщения
+    function_to_call = text_to_function.get(message.text)
+
+    # Если функция найдена, вызываем ее
+    if function_to_call:
+        function_to_call(message)
+    else:
+        # Здесь вы можете обработать другие текстовые сообщения или просто проигнорировать их
+        print("Такой команды нет")
+        pass
+commands_to_functions = {
+    "/расписание": today_schedule,
+    "/неделя": week_schedule,
+    "/пара": current_lesson,
+    "/замены": fetch_replacements,
+    "/надолинапару": should_i_go_to_class,
+    "/завтра": tomorrow_schedule,
+    "/звонки": bell_times,
+    "/help": send_welcome,
+    "Расписание на сегодня": today_schedule,
+    "Расписание на неделю": week_schedule,
+    "Текущая пара": current_lesson,
+    "Замены на сегодня": fetch_replacements,
+    "Надо ли на пару?": should_i_go_to_class,
+    "Пары на завтра": tomorrow_schedule,
+    "Звонки на пару": bell_times,
+    "/рассылка": send_broadcast
+}
 
 while True:
     try:
