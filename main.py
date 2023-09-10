@@ -584,7 +584,7 @@ while True:
     try:
         bot.polling(timeout=100)
     except requests.exceptions.ReadTimeout:
-        print(f"Timeout error occurred. Trying to reconnect....{e}")
+        print(f"Timeout error occurred. Trying to reconnect...")
         time.sleep(40)
     except Exception as e:
         print(f"Unexpected error occurred: Trying to reconnect...")
