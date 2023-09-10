@@ -20,7 +20,17 @@ TOKEN = '6389584311:AAEOqZhGrLhHuKz03D4z3gW_ZQAObS6sOsA'
 bot = telebot.TeleBot(TOKEN)
 
 
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_text_messages(message):
+    # Проверяем, является ли текст одной из команд из словаря commands_to_functions
+    command_function = commands_to_functions.get(message.text)
 
+    if command_function:
+        command_function(message)
+    elif message.text.startswith('/рассылка'):
+        send_broadcast(message)
+    else:
+        bot.reply_to(message, f"Неизвестная команда: {message.text}")
 
 
 def fetch_latest_docx_url(base_url="https://www.uksivt.ru/zameny"):
@@ -147,7 +157,15 @@ days_mapping = {
     'SATURDAY': 'СУББОТА',
     'SUNDAY': 'ВОСКРЕСЕНЬЕ'
 }
-
+commands = [
+    ("/расписание", "Расписание на сегодня"),
+    ("/неделя", "Расписание на неделю"),
+    ("/пара", "Текущая пара"),
+    ("/замены", "Замены на сегодня"),
+    ("/надолинапару", "Надо ли на пару?"),
+    ("/завтра", "Пары на завтра"),
+    ("/звонки", "Звонки на пару")
+]
 reminders = {}
 all_users = set()
 #РАССЫЛКА ЗАМЕН
@@ -200,9 +218,6 @@ def start_replacement_checker():
 threading.Thread(target=start_replacement_checker).start()
 
 #РАССЫЛКА ЗАМЕН ОКОНЧЕНА
-
-
-
 
 last_response_time = {}  # Добавлен словарь для отслеживания времени последнего ответа
 
@@ -267,15 +282,16 @@ def tomorrow_schedule(message):
     response += "\n".join([format_lesson(i, lesson, day_name) for i, lesson in lessons.items()])
     bot.reply_to(message, response)
 
-@bot.message_handler(func=lambda message: True)
-def handle_all_commands(message):
-    function_to_call = commands_to_functions.get(message.text)
-    if function_to_call:
-        function_to_call(message)
-    else:
-        bot.reply_to(message, "Неизвестная команда.")
 
+# Обновляем функцию для создания клавиатуры
+def generate_keyboard():
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    for i in range(0, len(commands), 2):
+        row = [types.KeyboardButton(desc) for _, desc in commands[i:i+2]]
+        markup.row(*row)
+    return markup
 
+# Обновляем функцию send_welcome
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     if not can_send_message(message.chat.id, message.from_user.id):
@@ -294,22 +310,41 @@ def send_welcome(message):
 - *Завтра*: Выводит информацию о завтрашних парах.
 - *Звонки*: Выводит информацию о звонках на пару на сегодня.
     """
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True, row_width=2)
-    buttons = [types.KeyboardButton(text=desc) for cmd, desc in commands]
-    markup.add(*buttons)
-    bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, help_text, reply_markup=generate_keyboard(), parse_mode="Markdown")
+
+# Обработчик для текстовых сообщений
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_text_messages(message):
+    command = next((cmd for cmd, desc in commands if desc == message.text), None)
+    if command:
+        bot.process_new_messages([types.Message(message_id=message.message_id, from_user=message.from_user, date=message.date, chat=message.chat, content_type="text", text=command, json={})])
 
 
+# Добавим обработчик для callback_query, чтобы обрабатывать нажатия на кнопки
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    if not can_send_message(call.message.chat.id, call.from_user.id):
+        return
+
+    if call.message:
+        if call.data == "/расписание":
+            today_schedule(call.message)
+        elif call.data == "/неделя":
+            week_schedule(call.message)
+        elif call.data == "/пара":
+            current_lesson(call.message)
+        elif call.data == "/замены":
+            fetch_replacements(call.message)
+        elif call.data == "/надолинапару":
+            should_i_go_to_class(call.message)
+        elif call.data == "/завтра":
+            tomorrow_schedule(call.message)
+        elif call.data == "/звонки":
+            bell_times(call.message)
+        else:
+            bot.send_message(call.message.chat.id, f"Неизвестная команда: {call.data}")
 
 
-
-
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    function_to_call = text_to_function.get(message.text)
-
-    if function_to_call:
-        function_to_call(message)
 # Функция для вывода расписания звонков
 @bot.message_handler(commands=['звонки'])
 def bell_times(message):
@@ -471,14 +506,14 @@ def get_all_chats_from_file():
 
 
 # Функция для рассылки сообщений
-@bot.message_handler(commands=['рассылка'])
+@bot.message_handler(func=lambda message: message.text.startswith('/рассылка'))
 def send_broadcast(message):
     if str(message.from_user.id) in ADMINS:
-        msg_parts = message.text.split(' ', 1)
-        if len(msg_parts) < 2:
+        # Извлекаем текст для рассылки, удаляя первые 10 символов (/рассылка и пробел)
+        broadcast_msg = message.text[10:].strip()
+        if not broadcast_msg:
             bot.reply_to(message, "Пожалуйста, укажите сообщение для рассылки после команды.")
             return
-        broadcast_msg = msg_parts[1]
         chats = get_all_chats_from_file()
 
         for chat_id in chats:
@@ -490,6 +525,7 @@ def send_broadcast(message):
     else:
         bot.reply_to(message, "У вас нет прав на выполнение этой команды.")
 
+
 # Измените обработчик сообщений, чтобы добавить каждый чат в файл
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
@@ -497,21 +533,29 @@ def handle_all_messages(message):
     # ... [остальной код обработчика]
 
 
+# Обработчик для текстовых сообщений
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_text_messages(message):
+    # Проверяем, является ли текст командой из списка commands
+    command = next((cmd for cmd, desc in commands if desc == message.text), None)
+
+    # Если текст не является командой из списка, проверяем, начинается ли он с '/'
+    if not command and message.text.startswith('/'):
+        command = message.text[1:]  # Убираем '/' в начале
+
+    if command:
+        # Теперь вызываем соответствующий обработчик для команды
+        if command == "надолинапару":
+            should_i_go_to_class(message)
+        # ... [добавьте другие команды по аналогии, если нужно]
+        else:
+            bot.reply_to(message, f"Неизвестная команда: {command}")
 
 
 
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    # Получаем функцию на основе текста сообщения
-    function_to_call = text_to_function.get(message.text)
 
-    # Если функция найдена, вызываем ее
-    if function_to_call:
-        function_to_call(message)
-    else:
-        # Здесь вы можете обработать другие текстовые сообщения или просто проигнорировать их
-        print("Такой команды нет")
-        pass
+
+
 commands_to_functions = {
     "/расписание": today_schedule,
     "/неделя": week_schedule,
@@ -521,22 +565,28 @@ commands_to_functions = {
     "/завтра": tomorrow_schedule,
     "/звонки": bell_times,
     "/help": send_welcome,
+    "/рассылка": send_broadcast,
     "Расписание на сегодня": today_schedule,
     "Расписание на неделю": week_schedule,
     "Текущая пара": current_lesson,
     "Замены на сегодня": fetch_replacements,
     "Надо ли на пару?": should_i_go_to_class,
     "Пары на завтра": tomorrow_schedule,
-    "Звонки на пару": bell_times,
-    "/рассылка": send_broadcast
+    "Звонки на пару": bell_times
 }
+
+
+
+
+
 
 while True:
     try:
         bot.polling(timeout=100)
     except requests.exceptions.ReadTimeout:
-        print(f"Timeout error occurred. Trying to reconnect....")
+        print(f"Timeout error occurred. Trying to reconnect....{e}")
         time.sleep(40)
     except Exception as e:
         print(f"Unexpected error occurred: Trying to reconnect...")
         time.sleep(40)
+    
