@@ -576,6 +576,7 @@ def handle_text_messages(message):
 
 
 commands_to_functions = {
+    "/start": send_welcome,
     "/расписание": today_schedule,
     "/неделя": week_schedule,
     "/пара": current_lesson,
