@@ -22,6 +22,8 @@ bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_text_messages(message):
+    # Сохраняем ID чата в файл
+    save_chat_to_file(message.chat.id)
     # Проверяем, является ли текст одной из команд из словаря commands_to_functions
     command_function = commands_to_functions.get(message.text)
 
@@ -69,18 +71,35 @@ def extract_schedule_from_docx(docx_url):
     replacement_lines = []
     capture_mode = False  # Флаг, который показывает, следует ли захватывать строки после обнаружения группы
 
+    date_info = None
+    for i, paragraph in enumerate(doc.paragraphs):
+        if "КОРРЕКТИРОВКА РАСПИСАНИЯ" in paragraph.text:
+            # Предполагаем, что дата находится в следующем абзаце
+            date_info = doc.paragraphs[i + 1].text if i + 1 < len(doc.paragraphs) else None
+            if date_info:
+                replacement_lines.insert(0, date_info)  # Добавляем дату в начало списка
+            break
+
+    # Поиск информации о заменах
     for table in doc.tables:
         for row in table.rows:
-            first_cell_text = row.cells[0].text.strip()
+            row_text = ' '.join(cell.text for cell in row.cells).strip()
 
-            # Если мы находим группу "21уКСК" или находимся в режиме захвата
-            if "21уКСК-1" in first_cell_text or (capture_mode and first_cell_text == ""):
-                replacement_lines.append(' '.join(cell.text for cell in row.cells))
+            # Если мы находим группу "21уКСК-1"
+            if "21уКСК-1" in row_text:
                 capture_mode = True
-            else:
-                capture_mode = False
+
+            # Если мы в режиме захвата и строка не пуста, добавляем ее
+            if capture_mode and row_text:
+                replacement_lines.append(row_text)
+            elif capture_mode and not row_text:
+                break  # Прекращаем захват, если строка пуста
 
     return "\n".join(replacement_lines) if replacement_lines else None
+
+
+
+
 
 
 # Обновленное расписание для группы 21уКСК-1
@@ -176,7 +195,7 @@ def check_and_send_replacements():
     # Читаем последние сохраненные замены из файла
     if os.path.exists("replacements.txt"):
         try:
-            with open("replacements.txt", "r", encoding="ISO-8859-1") as f:
+            with open("replacements.txt", "r", encoding="utf-8") as f:  # Изменено здесь
                 last_replacements = f.read()
 
         except UnicodeDecodeError:
@@ -190,7 +209,7 @@ def check_and_send_replacements():
         # Если замены найдены и они отличаются от последних сохраненных
         if schedule_info and schedule_info != last_replacements:
             # Сохраняем замены в файл
-            with open("replacements.txt", "w", encoding="ISO-8859-1") as f:
+            with open("replacements.txt", "w", encoding="utf-8") as f:  # Изменено здесь
                 f.write(schedule_info)
 
             # Отправляем замены во все личные чаты
