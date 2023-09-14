@@ -94,6 +94,8 @@ def extract_schedule_from_docx(docx_url):
                 replacement_lines.append(row_text)
             elif capture_mode and not row_text:
                 break  # Прекращаем захват, если строка пуста
+            if not any("21уКСК-1" in line for line in replacement_lines):
+                return None  # Если информации о группе нет, возвращаем None
 
     return "\n".join(replacement_lines) if replacement_lines else None
 
