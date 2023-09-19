@@ -22,8 +22,11 @@ bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_text_messages(message):
+
     # Сохраняем ID чата в файл
     save_chat_to_file(message.chat.id)
+    if message.chat.type in ['group', 'supergroup', 'channel']:
+        return
     # Проверяем, является ли текст одной из команд из словаря commands_to_functions
     command_function = commands_to_functions.get(message.text)
 
