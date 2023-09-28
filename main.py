@@ -63,6 +63,9 @@ def fetch_latest_docx_url(base_url="https://www.uksivt.ru/zameny"):
     return latest_link
 
 #print(fetch_latest_docx_url())
+
+
+
 def extract_schedule_from_docx(docx_url):
     # Скачиваем docx-файл
     response = requests.get(docx_url)
@@ -84,12 +87,13 @@ def extract_schedule_from_docx(docx_url):
             break
 
     # Поиск информации о заменах
+    group_pattern = re.compile(r'21укск-1', re.IGNORECASE)
     for table in doc.tables:
         for row in table.rows:
             row_text = ' '.join(cell.text for cell in row.cells).strip()
 
-            # Если мы находим группу "21уКСК-1"
-            if "21уКСК-1" in row_text:
+            # Если мы находим группу "21уКСК-1" в любом регистре
+            if group_pattern.search(row_text):
                 capture_mode = True
 
             # Если мы в режиме захвата и строка не пуста, добавляем ее
@@ -97,14 +101,17 @@ def extract_schedule_from_docx(docx_url):
                 replacement_lines.append(row_text)
             elif capture_mode and not row_text:
                 break  # Прекращаем захват, если строка пуста
-            if not any("21уКСК-1" in line for line in replacement_lines):
-                return None  # Если информации о группе нет, возвращаем None
 
-    return "\n".join(replacement_lines) if replacement_lines else None
+    # Замена строки, содержащей название группы 7 раз, на одинарное написание группы
+    for i, line in enumerate(replacement_lines):
+        if line.lower().count("21укск-1") == 7:
+            replacement_lines[i] = "21уКСК-1"
 
+    # Если нет замен для группы, возвращаем None или пустую строку
+    if len(replacement_lines) <= 1:  # Учитываем строку с датой
+        return None
 
-
-
+    return "\n".join(replacement_lines)
 
 
 # Обновленное расписание для группы 21уКСК-1
@@ -343,7 +350,7 @@ def handle_text_messages(message):
     if command:
         bot.process_new_messages([types.Message(message_id=message.message_id, from_user=message.from_user, date=message.date, chat=message.chat, content_type="text", text=command, json={})])
 
-
+'''
 # Добавим обработчик для callback_query, чтобы обрабатывать нажатия на кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
@@ -367,7 +374,7 @@ def callback_inline(call):
             bell_times(call.message)
         else:
             bot.send_message(call.message.chat.id, f"Неизвестная команда: {call.data}")
-
+'''
 
 # Функция для вывода расписания звонков
 @bot.message_handler(commands=['звонки'])
